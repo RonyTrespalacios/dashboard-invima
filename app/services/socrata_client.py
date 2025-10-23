@@ -7,6 +7,8 @@ from typing import Dict, List, Optional
 from app.core.config import settings
 import asyncio
 from functools import wraps
+import unicodedata
+from datetime import datetime
 
 def async_wrap(func):
     """Wrapper para convertir funciones síncronas en asíncronas"""
@@ -17,6 +19,22 @@ def async_wrap(func):
     return run
 
 class SocrataClient:
+    INVIMA_ENTITY_NAME = "INSTITUTO NACIONAL DE VIGILANCIA DE MEDICAMENTOS Y ALIMENTOS"
+    CATEGORY_KEYWORDS = {
+        "medicamentos": ["medicament", "farmac", "biologic", "terapeut", "suero", "vigilancia sanitaria", "intrahospitalario"],
+        "alimentos": ["alimento", "nutric", "comest", "bebida", "alimenticio"],
+        "cosmeticos": ["cosmet", "higiene personal", "aseo personal", "perfume", "maquill", "aseo cosm"],
+        "dispositivos_medicos": ["dispositivo", "equipo medico", "instrumental", "in vitro", "reactivo de diagnostico", "implant"],
+        "certificaciones": ["certific", "inspecc", "auditor", "bpm", "verific", "licencia", "concepto sanitario"]
+    }
+    CATEGORY_LABELS = {
+        "medicamentos": "Medicamentos",
+        "alimentos": "Alimentos",
+        "cosmeticos": "Cosméticos",
+        "dispositivos_medicos": "Dispositivos médicos",
+        "certificaciones": "Certificaciones o inspecciones"
+    }
+
     def __init__(self):
         # Inicializar cliente Socrata
         # Si hay app_token, username y password, usar autenticación
@@ -37,6 +55,129 @@ class SocrataClient:
         """Cerrar cliente al destruir el objeto"""
         if hasattr(self, 'client'):
             self.client.close()
+    
+    @staticmethod
+    def _clean_value(value: Optional[str]) -> Optional[str]:
+        """
+        Normaliza valores provenientes del dataset reemplazando cadenas 'NULL' por None
+        y eliminando espacios extra.
+        """
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip()
+            if normalized.upper() == "NULL" or normalized == "":
+                return None
+            return normalized
+        return value
+
+    @staticmethod
+    def _normalize_text(value: Optional[str]) -> str:
+        """
+        Convierte una cadena a minúsculas sin tildes para facilitar búsquedas.
+        """
+        if not value:
+            return ""
+        normalized = unicodedata.normalize("NFD", value)
+        without_accents = "".join(
+            char for char in normalized if unicodedata.category(char) != "Mn"
+        )
+        return without_accents.lower()
+
+    def _format_date(self, value: Optional[str]) -> Optional[str]:
+        """
+        Convierte la fecha recibida del dataset a formato ISO (YYYY-MM-DD) cuando es posible.
+        """
+        clean_value = self._clean_value(value)
+        if not clean_value:
+            return None
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                return datetime.strptime(clean_value, fmt).date().isoformat()
+            except ValueError:
+                continue
+        return clean_value
+
+    def _normalize_category(self, raw_category: str) -> Optional[str]:
+        """
+        Mapea la categoría recibida hacia el identificador interno soportado.
+        """
+        slug = self._normalize_text(raw_category).replace(" ", "_")
+        if slug in self.CATEGORY_KEYWORDS:
+            return slug
+        # También aceptar nombres de catálogo con artículos omitidos
+        for key, label in self.CATEGORY_LABELS.items():
+            label_slug = self._normalize_text(label).replace(" ", "_")
+            if slug == label_slug:
+                return key
+        return None
+
+    def _detect_categories(self, *texts: Optional[str]) -> List[str]:
+        """
+        Detecta categorías sugeridas a partir del contenido textual del trámite.
+        """
+        combined = " ".join(self._normalize_text(text) for text in texts if text)
+        detected = []
+        for key, keywords in self.CATEGORY_KEYWORDS.items():
+            if any(keyword in combined for keyword in keywords):
+                detected.append(self.CATEGORY_LABELS[key])
+        return detected
+
+    @staticmethod
+    def _safe_int(value: Optional[str]) -> int:
+        """
+        Intenta convertir un valor a entero para ordenar pasos secuenciales.
+        """
+        if value is None:
+            return 0
+        try:
+            return int(float(value))
+        except (ValueError, TypeError):
+            return 0
+
+    def _build_where_clause(
+        self,
+        texto: Optional[str],
+        categorias: Optional[List[str]]
+    ) -> str:
+        """
+        Construye la cláusula where en función de los filtros aplicados.
+        """
+        where_clauses = [f"nombre_de_la_entidad = '{self.INVIMA_ENTITY_NAME}'"]
+
+        if texto:
+            sanitized = texto.replace("'", "''")
+            like_pattern = f"%{sanitized.upper()}%"
+            search_fields = [
+                "nombre_del_tr_mite_u_otro",
+                "nombre_com_n",
+                "prop_sito_del_tr_mite_u_otro",
+                "nombre_resultado"
+            ]
+            text_clause = " OR ".join(
+                f"upper({field}) like '{like_pattern}'"
+                for field in search_fields
+            )
+            where_clauses.append(f"({text_clause})")
+
+        if categorias:
+            category_conditions: List[str] = []
+            for categoria in categorias:
+                normalized = self._normalize_category(categoria)
+                if not normalized:
+                    continue
+                keywords = self.CATEGORY_KEYWORDS.get(normalized, [])
+                for keyword in keywords:
+                    pattern = f"%{keyword.upper()}%"
+                    category_conditions.extend([
+                        f"upper(nombre_del_tr_mite_u_otro) like '{pattern}'",
+                        f"upper(nombre_com_n) like '{pattern}'"
+                    ])
+            if category_conditions:
+                where_clauses.append("(" + " OR ".join(category_conditions) + ")")
+
+        where = " AND ".join(where_clauses)
+        return where
     
     async def query(
         self,
@@ -132,6 +273,136 @@ class SocrataClient:
             "data": data,
             "limit": limit,
             "offset": offset
+        }
+
+    async def buscar_tramites_suit(
+        self,
+        texto: Optional[str] = None,
+        categorias: Optional[List[str]] = None,
+        limit: int = 20,
+        offset: int = 0
+    ) -> Dict:
+        """
+        HU-INVIMA-001: Búsqueda de trámites del INVIMA disponibles en el SUIT.
+        Retorna los trámites agrupados por número único junto con sus pasos asociados.
+        """
+        where = self._build_where_clause(texto=texto, categorias=categorias)
+
+        # Obtener total de trámites únicos que cumplen la condición
+        total = 0
+        try:
+            total_data = await self.query(
+                select="count(distinct n_mero_unico) as total",
+                where=where,
+                limit=1
+            )
+            if total_data:
+                total = int(total_data[0].get("total", 0))
+        except Exception:
+            total = 0
+
+        select_fields = (
+            "n_mero_unico, "
+            "max(nombre_del_tr_mite_u_otro) as nombre_tramite, "
+            "max(nombre_com_n) as nombre_comun, "
+            "max(prop_sito_del_tr_mite_u_otro) as proposito, "
+            "max(nombre_resultado) as resultado, "
+            "max(clase) as clase_tramite, "
+            "max(fecha_de_actualizaci_n) as fecha_actualizacion"
+        )
+
+        tramites_data = await self.query(
+            select=select_fields,
+            where=where,
+            group="n_mero_unico",
+            order="nombre_tramite ASC",
+            limit=limit,
+            offset=offset
+        )
+
+        numero_unicos = [
+            tramite.get("n_mero_unico")
+            for tramite in tramites_data
+            if tramite.get("n_mero_unico")
+        ]
+
+        pasos_map: Dict[str, List[Dict]] = {}
+        if numero_unicos:
+            sanitized_ids: List[str] = []
+            for numero in numero_unicos:
+                sanitized = str(numero).replace("'", "''")
+                sanitized_ids.append(f"'{sanitized}'")
+            ids_clause = ", ".join(sanitized_ids)
+            pasos_where = f"{where} AND n_mero_unico in ({ids_clause})"
+            pasos_data = await self.query(
+                select=(
+                    "n_mero_unico, "
+                    "orden_paso, "
+                    "descripcion_paso, "
+                    "orden_condicion, "
+                    "tipo_accion_condicion, "
+                    "documento_nombre, "
+                    "documento_tipo, "
+                    "descripcion_del_pago"
+                ),
+                where=pasos_where,
+                order="n_mero_unico, orden_paso, orden_condicion",
+                limit=len(numero_unicos) * 50
+            )
+
+            for paso in pasos_data:
+                numero = paso.get("n_mero_unico")
+                if not numero:
+                    continue
+                pasos_map.setdefault(numero, []).append(paso)
+
+        tramites = []
+        for tramite in tramites_data:
+            numero = tramite.get("n_mero_unico")
+            nombre_tramite = self._clean_value(tramite.get("nombre_tramite"))
+            nombre_comun = self._clean_value(tramite.get("nombre_comun"))
+            proposito = self._clean_value(tramite.get("proposito"))
+            nombre_resultado = self._clean_value(tramite.get("resultado"))
+            clase = self._clean_value(tramite.get("clase_tramite"))
+
+            pasos = []
+            for paso in sorted(
+                pasos_map.get(numero, []),
+                key=lambda registro: (
+                    self._safe_int(registro.get("orden_paso")),
+                    self._safe_int(registro.get("orden_condicion"))
+                )
+            ):
+                pasos.append({
+                    "orden_paso": self._clean_value(paso.get("orden_paso")),
+                    "descripcion_paso": self._clean_value(paso.get("descripcion_paso")),
+                    "orden_condicion": self._clean_value(paso.get("orden_condicion")),
+                    "tipo_accion_condicion": self._clean_value(paso.get("tipo_accion_condicion")),
+                    "documento_nombre": self._clean_value(paso.get("documento_nombre")),
+                    "documento_tipo": self._clean_value(paso.get("documento_tipo")),
+                    "descripcion_del_pago": self._clean_value(paso.get("descripcion_del_pago"))
+                })
+
+            categorias_detectadas = self._detect_categories(nombre_tramite, nombre_comun, proposito)
+
+            tramites.append({
+                "numero_unico": numero,
+                "nombre_tramite": nombre_tramite,
+                "nombre_comun": nombre_comun,
+                "proposito": proposito,
+                "nombre_resultado": nombre_resultado,
+                "clase": clase,
+                "entidad": self.INVIMA_ENTITY_NAME,
+                "fecha_actualizacion": self._format_date(tramite.get("fecha_actualizacion")),
+                "categorias": categorias_detectadas,
+                "pasos": pasos
+            })
+
+        return {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "tramites": tramites
         }
     
     async def obtener_estadisticas(self) -> Dict:

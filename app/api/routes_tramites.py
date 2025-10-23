@@ -3,9 +3,9 @@ Rutas API para Trámites
 HU01: Búsqueda de trámites
 """
 from fastapi import APIRouter, Query, HTTPException
-from typing import Optional
+from typing import Optional, List
 from app.services.socrata_client import socrata_client
-from app.models.tramites_model import TramiteResponse
+from app.models.tramites_model import TramiteResponse, TramiteSuitResponse
 
 router = APIRouter()
 
@@ -62,3 +62,27 @@ async def obtener_campos():
         return {"campos": campos}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al obtener campos: {str(e)}")
+
+@router.get("/suit", response_model=TramiteSuitResponse)
+async def buscar_tramites_suit(
+    texto: Optional[str] = Query(None, description="Texto libre para buscar por nombre, propósito o palabra clave"),
+    categorias: Optional[List[str]] = Query(
+        None,
+        description="Lista de categorías (ej: medicamentos, alimentos, cosmeticos, dispositivos_medicos, certificaciones)"
+    ),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0)
+):
+    """
+    HU-INVIMA-001: Buscar trámites del INVIMA disponibles en el SUIT.
+    """
+    try:
+        resultado = await socrata_client.buscar_tramites_suit(
+            texto=texto,
+            categorias=categorias,
+            limit=limit,
+            offset=offset
+        )
+        return resultado
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al buscar trámites en el SUIT: {str(e)}")
