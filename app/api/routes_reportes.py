@@ -29,3 +29,15 @@ async def listar_reportes(limit: int = 100):
         return {"reportes": reportes, "total": len(reportes)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al listar reportes: {str(e)}")
+
+@router.get("/listar-anonimos")
+async def listar_reportes_anonimos(limit: int = 100):
+    """
+    Listar reportes con datos anonimizados para visualización pública
+    """
+    try:
+        reportes = await report_service.obtener_reportes(limit=limit)
+        reportes_anonimos = [report_service.anonimizar_reporte(reporte) for reporte in reportes]
+        return {"reportes": reportes_anonimos, "total": len(reportes_anonimos)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al listar reportes anónimos: {str(e)}")

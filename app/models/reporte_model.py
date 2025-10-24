@@ -6,8 +6,8 @@ from typing import Optional
 from datetime import datetime
 
 class ReporteError(BaseModel):
-    nombre: str = Field(..., min_length=2, max_length=100)
-    email: EmailStr
+    nombre: Optional[str] = Field(None, min_length=2, max_length=100)
+    email: Optional[str] = Field(None, description="Email opcional para contacto")
     tipo_error: str = Field(..., description="Tipo de error encontrado")
     descripcion: str = Field(..., min_length=10, max_length=1000)
     numero_radicado: Optional[str] = None
