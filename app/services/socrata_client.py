@@ -480,6 +480,153 @@ class SocrataClient:
             lambda: self.client.get_metadata(self.dataset_id)
         )
         return metadata
+    
+    async def obtener_estadisticas_suit(
+        self,
+        ano: Optional[str] = None,
+        clase: Optional[str] = None,
+        palabra_clave: Optional[str] = None
+    ) -> Dict:
+        """
+        HU-INVIMA-002: Estadísticas de trámites del INVIMA en el SUIT
+        Visualización de estadísticas para identificar tendencias y patrones
+        
+        Args:
+            ano: Filtrar por año
+            clase: Filtrar por clase de trámite
+            palabra_clave: Filtrar por palabra clave en nombre del trámite
+        
+        Returns:
+            Estadísticas por año, clase y categoría
+        """
+        # Construir WHERE base (solo INVIMA)
+        where_clauses = [f"nombre_de_la_entidad = '{self.INVIMA_ENTITY_NAME}'"]
+        
+        if ano:
+            where_clauses.append(f"a_o = '{ano}'")
+        
+        if clase:
+            clase_sanitizada = clase.replace("'", "''")
+            where_clauses.append(f"clase = '{clase_sanitizada}'")
+        
+        if palabra_clave:
+            kw_sanitizada = palabra_clave.replace("'", "''").upper()
+            where_clauses.append(
+                f"(upper(nombre_del_tr_mite_u_otro) like '%{kw_sanitizada}%' OR "
+                f"upper(nombre_com_n) like '%{kw_sanitizada}%')"
+            )
+        
+        where = " AND ".join(where_clauses)
+        
+        # 1. Estadísticas por año
+        try:
+            por_ano = await self.query(
+                select="a_o as ano, count(*) as cantidad",
+                where=where,
+                group="ano",
+                order="ano DESC",
+                limit=50
+            )
+        except Exception:
+            por_ano = []
+        
+        # 2. Estadísticas por clase
+        try:
+            por_clase = await self.query(
+                select="clase, count(*) as cantidad",
+                where=where,
+                group="clase",
+                order="cantidad DESC",
+                limit=50
+            )
+        except Exception:
+            por_clase = []
+        
+        # 3. Top trámites más frecuentes
+        try:
+            top_tramites = await self.query(
+                select="nombre_del_tr_mite_u_otro as nombre, count(*) as cantidad",
+                where=where,
+                group="nombre",
+                order="cantidad DESC",
+                limit=20
+            )
+        except Exception:
+            top_tramites = []
+        
+        # 4. Distribución por categoría
+        distribucion_categorias = []
+        for key, label in self.CATEGORY_LABELS.items():
+            keywords = self.CATEGORY_KEYWORDS.get(key, [])
+            cat_where = where + " AND (" + " OR ".join(
+                f"upper(nombre_del_tr_mite_u_otro) like '%{kw.upper()}%' OR "
+                f"upper(nombre_com_n) like '%{kw.upper()}%'"
+                for kw in keywords
+            ) + ")"
+            
+            try:
+                cat_data = await self.query(
+                    select="count(*) as cantidad",
+                    where=cat_where,
+                    limit=1
+                )
+                cantidad = int(cat_data[0].get("cantidad", 0)) if cat_data else 0
+                if cantidad > 0:
+                    distribucion_categorias.append({
+                        "categoria": label,
+                        "cantidad": cantidad
+                    })
+            except Exception:
+                continue
+        
+        # 5. Total de registros
+        try:
+            total_data = await self.query(
+                select="count(*) as total",
+                where=where,
+                limit=1
+            )
+            total = int(total_data[0].get("total", 0)) if total_data else 0
+        except Exception:
+            total = 0
+        
+        # 6. Listas de opciones de filtros
+        try:
+            clases_disponibles = await self.query(
+                select="DISTINCT clase",
+                where=f"nombre_de_la_entidad = '{self.INVIMA_ENTITY_NAME}'",
+                order="clase ASC",
+                limit=100
+            )
+            clases = [c.get("clase") for c in clases_disponibles if c.get("clase")]
+        except Exception:
+            clases = []
+        
+        try:
+            anos_disponibles = await self.query(
+                select="DISTINCT a_o as ano",
+                where=f"nombre_de_la_entidad = '{self.INVIMA_ENTITY_NAME}'",
+                order="ano DESC",
+                limit=50
+            )
+            anos = [a.get("ano") for a in anos_disponibles if a.get("ano")]
+        except Exception:
+            anos = []
+        
+        return {
+            "total_registros": total,
+            "por_ano": por_ano,
+            "por_clase": por_clase,
+            "top_tramites": top_tramites,
+            "distribucion_categorias": distribucion_categorias,
+            "clases_disponibles": clases,
+            "anos_disponibles": anos,
+            "filtros_aplicados": {
+                "ano": ano,
+                "clase": clase,
+                "palabra_clave": palabra_clave
+            }
+        }
 
 # Instancia singleton
 socrata_client = SocrataClient()
