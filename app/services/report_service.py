@@ -54,18 +54,5 @@ class ReportService:
             except Exception:
                 continue
         return reportes
-    
-    def anonimizar_reporte(self, reporte: Dict) -> Dict:
-        """
-        Anonimiza los datos personales de un reporte
-        """
-        return {
-            "reporte_id": reporte.get("reporte_id", "N/A"),
-            "tipo_error": reporte.get("tipo_error", "N/A"),
-            "descripcion": reporte.get("descripcion", "N/A"),
-            "numero_radicado": reporte.get("numero_radicado", "N/A"),
-            "fecha_reporte": reporte.get("fecha_reporte", "N/A"),
-            "tiene_contacto": "Sí" if (reporte.get("nombre") or reporte.get("email")) else "No"
-        }
 
 report_service = ReportService()

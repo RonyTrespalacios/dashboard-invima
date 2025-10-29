@@ -31,6 +31,7 @@ Este dashboard permite:
 - 🌐 **Consultar tablero público** con información actualizada
 - 📥 **Descargar datos abiertos** en formato JSON o CSV
 - 📝 **Reportar errores** o inconsistencias encontradas
+- 📊 **Visualizar reportes** con datos anónimos para administración
 
 #### Fuente de Datos
 Los datos son consultados en tiempo real desde el portal de Datos Abiertos del 
@@ -42,6 +43,7 @@ gobierno colombiano vía [Socrata API](https://www.datos.gov.co/).
 - **HU03**: Tablero público
 - **HU04**: Descarga de datos abiertos
 - **HU05**: Reporte de errores
+- **HU06**: Visualización de reportes (administración)
 
 ---
 

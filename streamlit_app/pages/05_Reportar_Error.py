@@ -33,18 +33,16 @@ with st.form("form_reporte"):
     
     with col1:
         nombre = st.text_input(
-            "Nombre Completo (Opcional)",
+            "Nombre Completo *",
             placeholder="Ej: Juan Pérez",
-            help="Tu nombre completo (opcional)",
-            key="nombre_input"
+            help="Tu nombre completo"
         )
     
     with col2:
         email = st.text_input(
-            "Correo Electrónico (Opcional)",
+            "Correo Electrónico *",
             placeholder="ejemplo@email.com",
-            help="Email para contactarte si es necesario (opcional)",
-            key="email_input"
+            help="Email para contactarte si es necesario"
         )
     
     # Tipo de error
@@ -59,16 +57,14 @@ with st.form("form_reporte"):
             "Problema de Visualización",
             "Otro"
         ],
-        help="Selecciona el tipo de error encontrado",
-        key="tipo_error_input"
+        help="Selecciona el tipo de error encontrado"
     )
     
     # Número de radicado (opcional)
     numero_radicado = st.text_input(
         "Número de Radicado (Opcional)",
         placeholder="Ej: 20230001234",
-        help="Si el error está relacionado con un trámite específico, indica su número de radicado",
-        key="numero_radicado_input"
+        help="Si el error está relacionado con un trámite específico, indica su número de radicado"
     )
     
     # Descripción
@@ -76,8 +72,7 @@ with st.form("form_reporte"):
         "Descripción del Error *",
         placeholder="Describe detalladamente el error encontrado...",
         help="Proporciona todos los detalles posibles sobre el error",
-        height=150,
-        key="descripcion_input"
+        height=150
     )
     
     st.markdown("---")
@@ -95,12 +90,10 @@ if submitted:
     # Validaciones
     errores = []
     
-    # Validar nombre solo si se proporciona
-    if nombre and len(nombre) < 2:
+    if not nombre or len(nombre) < 2:
         errores.append("El nombre debe tener al menos 2 caracteres")
     
-    # Validar email solo si se proporciona
-    if email and ("@" not in email or "." not in email):
+    if not email or "@" not in email or "." not in email:
         errores.append("Ingresa un correo electrónico válido")
     
     if not tipo_error:
@@ -140,8 +133,8 @@ if submitted:
                     
                     # Mostrar resumen
                     with st.expander("📄 Resumen del Reporte"):
-                        st.write(f"**Nombre:** {nombre if nombre else 'No proporcionado'}")
-                        st.write(f"**Email:** {email if email else 'No proporcionado'}")
+                        st.write(f"**Nombre:** {nombre}")
+                        st.write(f"**Email:** {email}")
                         st.write(f"**Tipo:** {tipo_error}")
                         if numero_radicado:
                             st.write(f"**Radicado:** {numero_radicado}")
@@ -156,9 +149,6 @@ if submitted:
                     - Si es necesario, te contactaremos al correo indicado
                     - Guarda el ID del reporte para futuras referencias
                     """)
-                    
-                    # Limpiar el formulario
-                    st.rerun()
                 else:
                     st.error(f"❌ Error: {resultado.get('message')}")
                     
