@@ -18,8 +18,8 @@ st.title("📊 Estadísticas del Dashboard")
 st.markdown("Visualización de métricas y tendencias de trámites INVIMA")
 
 # Botón de actualizar
-if st.button("🔄 Actualizar Datos", use_container_width=True):
-    st.cache_data.clear()
+# if st.button("🔄 Actualizar Datos", use_container_width=True):
+#     st.cache_data.clear()
 
 # Función para cargar estadísticas
 @st.cache_data(ttl=300)

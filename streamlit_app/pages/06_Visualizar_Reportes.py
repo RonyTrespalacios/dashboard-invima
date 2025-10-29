@@ -19,6 +19,17 @@ API_REPORTES = f"{FASTAPI_URL}/api/v1/reportes/listar"
 st.title("📊 Reportes de Errores")
 st.markdown("Visualización de reportes con datos anónimos para análisis y seguimiento")
 
+# Controles
+col1, col2 = st.columns([1, 4])
+# with col1:
+#     if st.button("🔄 Actualizar", type="primary", use_container_width=True):
+#         st.rerun()
+
+with col2:
+    st.caption(f"⏰ Última actualización: {datetime.now().strftime('%H:%M:%S')}")
+
+st.divider()
+
 # Función para anonimizar datos
 def anonimizar_datos(reportes: List[Dict]) -> List[Dict]:
     """
@@ -115,14 +126,16 @@ def obtener_estadisticas(reportes: List[Dict]) -> Dict:
         "ultimos_30_dias": ultimos_30_dias
     }
 
-# Cargar datos
-@st.cache_data(ttl=300)  # Cache por 5 minutos
+# Cargar datos sin caché
 def cargar_reportes():
     """
-    Carga los reportes desde la API
+    Carga los reportes desde la API sin caché
     """
     try:
-        response = requests.get(API_REPORTES, timeout=10)
+        # Agregar parámetro timestamp para evitar caché del navegador
+        import time
+        url = f"{API_REPORTES}?_t={int(time.time())}"
+        response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
         return data.get("reportes", [])

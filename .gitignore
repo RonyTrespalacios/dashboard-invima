@@ -40,6 +40,11 @@ wheels/
 # Logs
 *.log
 
+# Reportes (contienen datos personales de usuarios)
+reports/reportes.json
+reports/REP_*.json
+reports/*_backup_*.json
+
 # OS
 .DS_Store
 Thumbs.db
