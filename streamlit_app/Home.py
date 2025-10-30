@@ -37,14 +37,6 @@ Este dashboard permite:
 Los datos son consultados en tiempo real desde el portal de Datos Abiertos del 
 gobierno colombiano vía [Socrata API](https://www.datos.gov.co/).
 
-#### Historias de Usuario Implementadas
-- **HU01**: Búsqueda de trámites
-- **HU02**: Estadísticas y dashboard
-- **HU03**: Tablero público
-- **HU04**: Descarga de datos abiertos
-- **HU05**: Reporte de errores
-- **HU06**: Visualización de reportes (administración)
-
 ---
 
 ### 🚀 Comenzar
