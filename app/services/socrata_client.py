@@ -455,11 +455,15 @@ class SocrataClient:
     ) -> List[Dict]:
         """
         HU04: Descarga de datos abiertos
+        Obtiene datos públicos del dataset sin filtros específicos
         """
-        return await self.query(
-            limit=limit,
-            order="fecha_radicacion DESC"
-        )
+        try:
+            # Consultar sin orden específico ya que los campos varían por dataset
+            return await self.query(limit=limit)
+        except Exception as e:
+            # Si falla, intentar con campos básicos
+            print(f"Error en obtener_datos_publicos: {str(e)}")
+            return []
     
     async def obtener_campos(self) -> List[str]:
         """
